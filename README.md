@@ -48,6 +48,29 @@ uniquely identifies individual people or offensive content. The datasets are onl
 Creative Writing has 100 samples (N=5) and 100 samples (N=10). Logic Grid Puzzle has 200
 samples. Codenames Collaborative has 50 samples.
 
-## Run and Test
+## Installation and Usage
 
+### Installation
+
+```bash
+git clone https://github.com/AGI-FHBC/XAgents
+cd XAgents
+python setup.py install
+```
+
+### Configuration
+
+- Configure your `OPENAI_API_KEY` in  `config/config.yaml`
+
+| Variable Name                              | Explain                                   | Sample                                          |
+| ------------------------------------------ | ----------------------------------------- | ----------------------------------------------- |
+| OPENAI_API_KEY                             | Replace with your own key                 | OPENAI_API_KEY: "sk-..."                        |
+| OPENAI_API_BASE                            | Optional, access OpenAI API through a third-party proxy. | OPENAI_API_BASE: "https://<YOUR_SITE>/v1"       |
+| OPENAI_API_MODEL                           | The specific version of the model used    | OPENAI_API_MODEL: "<PROVIDER>/<MODEL_NAME>"     |
+| MAX_TOKENS                                 | The maximum number of tokens allowed in API requests and responses | MAX_TOKENS: 3000       |
+
+### Usage
+```python
+python startup.py --question_or_task "Write an article about American culture."
+```
 

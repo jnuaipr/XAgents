@@ -86,6 +86,7 @@ class CostManager(metaclass=Singleton):
         completion_tokens (int): The number of tokens used in the completion.
         model (str): The model used for the API call.
         """
+        model = model.split('/')[-1] if '/' in model else model
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         cost = (
@@ -170,6 +171,8 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
         collected_messages = []
         # iterate through the stream of events
         async for chunk in response:
+            if not chunk.get("choices"):
+                continue
             collected_chunks.append(chunk)  # save the event response
             chunk_message = chunk['choices'][0]['delta']  # extract the message
             collected_messages.append(chunk_message)  # save the message
