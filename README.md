@@ -18,8 +18,8 @@ Figure 1. Structure of XAgents.
 ## Conda Enviroment Setup
 
 ``` shell
-conda create --name fuzzys2s --file ./requirements.txt
-conda activate fuzzys2s
+conda create --name XAgents --file ./requirements.txt
+conda activate XAgents
 ```
 
 ## Datasets
