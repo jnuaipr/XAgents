@@ -3,6 +3,7 @@
 from xagents.roles import Manager
 from xagents.explorer import Explorer
 import asyncio
+import argparse
 
 
 async def StartUp(idea: str, investment: float = 3.0, n_round: int = 10, task_id=None,
@@ -21,5 +22,9 @@ question_or_task = '''
 '''
 
 if __name__ == "__main__":
-    asyncio.run(StartUp(question_or_task))
+    parser = argparse.ArgumentParser(description="Run a startup simulation.")
+    parser.add_argument("--question_or_task", type=str, required=True, help="The question or task to process.")
+    args = parser.parse_args()
+
+    asyncio.run(StartUp(args.question_or_task))
 

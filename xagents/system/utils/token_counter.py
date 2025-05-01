@@ -78,5 +78,6 @@ def count_string_tokens(string: str, model_name: str) -> int:
     Returns:
         int: The number of tokens in the text string.
     """
+    model_name = model_name.split('/')[-1] if '/' in model_name else model_name
     encoding = tiktoken.encoding_for_model(model_name)
     return len(encoding.encode(string))
