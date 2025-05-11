@@ -10,7 +10,7 @@ XAgents: A Unified Framework for Multi-Agent Cooperation viaIF-THEN Rules and Mu
 </p>
 
 <p align="center">
-<img src="./doc/png/fig.xagents.png" width=80%/> <br>
+<img src="doc/png/fig.xagents.png" width=80%/> <br>
 Figure 1. Structure of XAgents.
 </p>
 
