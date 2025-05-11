@@ -11,7 +11,7 @@ XAgents: A Unified Framework for Multi-Agent Cooperation viaIF-THEN Rules and Mu
 
 <p align="center">
 <img src="doc/png/fig.xagents.png" width=80%/> <br>
-Figure 1. Structure of XAgents.
+<b>Figure 1</b>. Structure of XAgents.
 </p>
 
 
@@ -53,7 +53,6 @@ samples. Codenames Collaborative has 50 samples.
 ### Installation
 
 ```bash
-git clone https://github.com/AGI-FHBC/XAgents
 cd XAgents
 python setup.py install
 ```
