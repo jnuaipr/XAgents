@@ -32,21 +32,23 @@ class Explorer(BaseModel):
         CONFIG.max_budget = investment
         logger.info(f'Investment: ${investment}.')
 
-    def _check_balance(self):
+    @staticmethod
+    def _check_balance():
         if CONFIG.total_cost > CONFIG.max_budget:
             raise NoMoneyException(CONFIG.total_cost, f'Insufficient funds: {CONFIG.max_budget}')
 
-    async def start_project(self, idea=None, llm_api_key=None, proxy=None, serpapi_key=None, task_id=None, alg_msg_queue=None):
+    async def start_project(self, idea=None, llm_api_key=None, proxy=None, serpapi_key=None, task_id=None, alg_msg_queue=None, workspace=''):
         self.environment.llm_api_key = llm_api_key
         self.environment.proxy = proxy
         self.environment.task_id = task_id
         self.environment.alg_msg_queue = alg_msg_queue
         self.environment.serpapi_key = serpapi_key
+        self.environment.workspace = workspace
         
         await self.environment.publish_message(Message(role="Question/Task", content=idea, cause_by=Requirement))
 
     def _save(self):
-        logger.info(self.model_dump_json())
+        logger.info(self.json())
 
     async def run(self):
 
