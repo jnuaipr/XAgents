@@ -12,6 +12,7 @@ from pathlib import Path
 def get_project_root():
     """逐级向上寻找项目根目录"""
     current_path = Path.cwd()
+    return current_path
     while True:
         if (current_path / '.git').exists() or \
            (current_path / '.project_root').exists() or \
@@ -31,7 +32,7 @@ UT_PATH = PROJECT_ROOT / 'data/ut'
 SWAGGER_PATH = UT_PATH / "files/api/"
 UT_PY_PATH = UT_PATH / "files/ut/"
 API_QUESTIONS_PATH = UT_PATH / "files/question/"
-YAPI_URL = "http://yapi.deepwisdomai.com/"
+YAPI_URL = "https://yapi.deepwisdomai.com/"
 TMP = PROJECT_ROOT / 'tmp'
 
 MEM_TTL = 24 * 30 * 3600

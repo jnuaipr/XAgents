@@ -22,6 +22,7 @@ TOKEN_COSTS = {
     "gpt-4-32k": {"prompt": 0.06, "completion": 0.12},
     "gpt-4-32k-0314": {"prompt": 0.06, "completion": 0.12},
     "gpt-4-0613": {"prompt": 0.06, "completion": 0.12},
+    "gpt-4o": {"prompt": 0.005, "completion": 0.0015},
     "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0},
 }
 
@@ -31,7 +32,7 @@ def count_message_tokens(messages, model="gpt-3.5-turbo-0613"):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        print("Warning: model not found. Using cl100k_base encoding.")
+        # print("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
     if model in {
         "gpt-3.5-turbo-0613",
@@ -40,6 +41,7 @@ def count_message_tokens(messages, model="gpt-3.5-turbo-0613"):
         "gpt-4-32k-0314",
         "gpt-4-0613",
         "gpt-4-32k-0613",
+        "gpt-4o"
         }:
         tokens_per_message = 3
         tokens_per_name = 1
@@ -79,5 +81,8 @@ def count_string_tokens(string: str, model_name: str) -> int:
         int: The number of tokens in the text string.
     """
     model_name = model_name.split('/')[-1] if '/' in model_name else model_name
-    encoding = tiktoken.encoding_for_model(model_name)
+    try:
+        encoding = tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
     return len(encoding.encode(string))

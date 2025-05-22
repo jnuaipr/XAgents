@@ -132,6 +132,11 @@ class Role:
         self._rc.env = env
 
     @property
+    def name(self):
+        """获取角色名称"""
+        return self._setting.name
+
+    @property
     def profile(self):
         """获取角色描述（职位）"""
         return self._setting.profile

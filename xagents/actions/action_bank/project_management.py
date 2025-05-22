@@ -18,8 +18,8 @@ PROMPT_TEMPLATE = '''
 ## Format example
 {format_example}
 -----
-Role: You are a project manager; the goal is to break down tasks according to PRD/technical design, give a task list, and analyze task dependencies to start with the prerequisite modules
-Requirements: Based on the context, fill in the following missing information, note that all sections are returned in Python code triple quote form seperatedly. Here the granularity of the task is a file, if there are any missing files, you can supplement them
+Role: You are a project manager; the goal is to break down tasks according to PRD/technical design, give a tasks list, and analyze tasks dependencies to start with the prerequisite modules
+Requirements: Based on the context, fill in the following missing information, note that all sections are returned in Python code triple quote form seperatedly. Here the granularity of the tasks is a file, if there are any missing files, you can supplement them
 Attention: Use '##' to split sections, not '#', and '## <SECTION_NAME>' SHOULD WRITE BEFORE the code and triple quote.
 
 ## Required Python third-party packages: Provided in requirements.txt format
@@ -117,7 +117,7 @@ class WriteTasks(Action):
 
     async def run(self, context):
         prompt = PROMPT_TEMPLATE.format(context=context, format_example=FORMAT_EXAMPLE)
-        rsp = await self._aask_v1(prompt, "task", OUTPUT_MAPPING)
+        rsp = await self._aask_v1(prompt, "tasks", OUTPUT_MAPPING)
         self._save(context, rsp)
         return rsp
 

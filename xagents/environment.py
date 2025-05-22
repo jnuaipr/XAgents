@@ -7,193 +7,223 @@
 @Modified From: https://github.com/geekan/MetaGPT/blob/main/metagpt/environment.py
 """
 import asyncio
+import os
 import re
 import json
+import time
+import networkx as nx
 
 from typing import Iterable
-
 from pydantic import BaseModel, Field
+from matplotlib import pyplot as plt
 
-from .roles import Role
-from .roles import KnowledgeGroup, ExecutionGroup
-
+from .roles import Role, CustomGroup
+from .roles.manager import Manager
 from .system.memory import Memory
 from .system.schema import Message
+# from tasks.logs import tasklogger
+
+
+SLEEP_RATE = 5
 
 
 class Environment(BaseModel):
     """环境，承载一批角色，角色可以向环境发布消息，可以被其他角色观察到"""
 
-    roles: dict[str, Role] = Field(default_factory=dict)
-    knowledge_roles: dict[str, Role] = Field(default_factory=dict)
-    execution_roles: dict[str, Role] = Field(default_factory=dict)
-    execution_plans: list = Field(default_factory=list)
-    sub_problems: list = Field(default=[])
-    knowledge: str = Field(default='')
-    execution_roles_args: list = Field(default_factory=list)
+    workspace: str = Field(default='')
 
-    question_or_task: str = Field(default_factory=str)
+    roles: dict[str, Role] = Field(default_factory=dict)
+    groups: dict[str, Role] = Field(default_factory=dict)
+
+    graph: nx.DiGraph = Field(default_factory=nx.DiGraph)
+
+    question_or_task: str = Field(default='')
+    information: str = Field(default='')
+    previous_result: list = Field(default_factory=list)
     result: str = Field(default='')
 
     memory: Memory = Field(default_factory=Memory)
     history: str = Field(default='')
-    msg_json: list = Field(default_factory=list)
-    json_log: str = Field(default='./logs/json_log.json')
     task_id: str = Field(default='')
     proxy: str = Field(default='')
     llm_api_key: str = Field(default='')
     serpapi_key: str = Field(default='')
     alg_msg_queue: object = Field(default=None)
-    previous_results: list = Field(default=[])
 
     class Config:
         arbitrary_types_allowed = True
 
     def add_role(self, role: Role):
-        """增加一个在当前环境的Role"""
+        """在当前环境增加一个Manger Role"""
         role.set_env(self)
         self.roles[role.profile] = role
 
     def add_roles(self, roles: Iterable[Role]):
-        """增加一批在当前环境的Role"""
+        """在当前环境增加一批Manger Role"""
         for role in roles:
             self.add_role(role)
 
-    def add_knowledge_role(self, role: Role):
-        """在当前环境增加一个Knowledge Role"""
+    def add_group(self, role: Role):
+        """在当前环境增加一个Group"""
         role.set_env(self)
-        self.knowledge_roles[role.profile] = role
+        self.groups[role.name] = role
 
-    def add_knowledge_roles(self, roles: Iterable[Role]):
+    def add_groups(self, roles: Iterable[Role]):
         """在当前环境增加一批Knowledge Role"""
         for role in roles:
-            self.add_knowledge_role(role)
+            self.add_group(role)
 
-    def add_execution_role(self, role: Role):
-        """在当前环境增加一个Execution Role"""
-        role.set_env(self)
-        self.execution_roles[role.profile] = role
+    @staticmethod
+    def _parser_plans(content):
+        """解析子任务"""
+        plans = re.findall('## Subtasks:([\s\S]*?)##', content + "##")[0].strip().split("\n")
+        plans_args = []
+        for plan in plans:
+            plan = plan.strip()
+            if re.match(r"^\d+\.", plan):
+                pattern = re.compile(r'^(\d+)\.\s*(.*)')
+                match = pattern.match(plan)
+                number = int(match.group(1).strip())
+                task = str(match.group(2).strip())
+                plans_args.append({'number': number, 'task': task})
+        return plans_args
 
-    def add_execution_roles(self, roles: Iterable[Role]):
-        """在当前环境增加一批Execution Role"""
+    @staticmethod
+    def _parser_information(content):
+        """解析信息"""
+        information = re.findall('## Information:([\s\S]*?)##', content + "##")[0].strip()
+        return information
+
+    @staticmethod
+    def _parser_graph(content):
+        """解析任务输入"""
+        graph = re.findall('## Predecessor Steps:([\s\S]*?)##', content + "##")[0]
+        graph = re.findall('{[\s\S]*?}', str(graph))
+        graph_args = []
+        for inputs in graph:
+            inputs = json.loads(inputs.strip())
+            if len(inputs.keys()) > 0:
+                graph_args.append(inputs)
+        return graph_args
+
+    @staticmethod
+    def _parser_roles(content):
+        """解析专家角色"""
+        roles = ''.join(re.findall('## Roles List:([\s\S]*?)##', content + "##"))
+        roles = re.findall('{[\s\S]*?}', str(roles))
+        roles_args = []
         for role in roles:
-            self.add_execution_role(role)
+            role = json.loads(role.strip())
+            if len(role.keys()) > 0:
+                roles_args.append(role)
+        return roles_args
 
-    @staticmethod
-    def _parser_question_or_task(context):
-        """解析人类的问题/任务"""
-        question_or_task = re.findall('## Question or Task([\s\S]*?)##', str(context))[0]
-        return question_or_task
+    def create_graph(self, plans_args: list, roles_args: list, graph_args: list):
+        dg = nx.DiGraph()
 
-    @staticmethod
-    def _parser_problems(context):
-        """解析子问题和知识型专家参数"""
-        context = re.findall('## Sub-problem Similarity([\s\S]*?)##', str(context))[0]
-        problems = re.findall('{[\s\S]*?}', str(context))
-        problems_args = []
-        for problem in problems:
-            problem = json.loads(problem.strip())
-            if len(problem.keys()) > 0:
-                problems_args.append(problem)
-        print('---------------Sub-problems---------------')
-        for i, problem in enumerate(problems_args):
-            print('Sub-problem', i, problem)
-        return problems_args
+        for plan_args in plans_args:
+            node = plan_args['number']
+            dg.add_node(node)
+            dg.nodes[node]['task'] = plan_args['task']
 
-    @staticmethod
-    def _parser_plans(context):
-        """解析生成的执行计划"""
-        context = re.findall('## Execution Plan([\s\S]*?)##', str(context))[0]
-        execution_plans = [v.split("\n")[0] for v in re.split("\n\d+\. ", context)[1:]]
-        print('---------------Execution Plans---------------')
-        for i, step in enumerate(execution_plans):
-            print('Step', i, step)
-        return execution_plans
+        for graph_arg in graph_args:
+            if '' == graph_arg['inputs']:
+                continue
+            else:
+                edges = []
+                if ',' in graph_arg['inputs']:
+                    inputs_list = [item.strip() for item in graph_arg['inputs'].split(',')]
+                else:
+                    inputs_list = [graph_arg['inputs'].strip()]
+                for input_list in inputs_list:
+                    edges.append((int(re.findall(r'\d+', input_list)[0]), int(re.findall(r'\d+', graph_arg['number'])[0])))
+                    dg.add_edges_from(edges)
+        for role_args in roles_args:
+            node = int(role_args['number'])
+            dg.nodes[node]['name'] = role_args['name']
+            dg.nodes[node]['tools'] = role_args['tools']
+            dg.nodes[node]['prompt'] = role_args['prompt']
 
-    @staticmethod
-    def _parser_execution_roles(context):
-        """解析动作型专家参数"""
-        context = re.findall('## Execution Expert Roles List([\s\S]*?)##', str(context))[0]
-        execution_roles = re.findall('{[\s\S]*?}', context)
-        execution_roles_args = []
-        for execution_role in execution_roles:
-            execution_role = json.loads(execution_role.strip())
-            if len(execution_role.keys()) > 0:
-                execution_roles_args.append(execution_role)
-        print('---------------Execution Roles---------------')
-        for i, execution_role in enumerate(execution_roles_args):
-            print('Role', i, execution_role)
-        return execution_roles_args
-
-    def create_knowledge_roles(self, sub_problems: list):
-        """创建Knowledge Roles"""
-        knowledge_roles = []
-        for i, sub_problem in enumerate(sub_problems):
-            role = KnowledgeGroup(problem_arg=sub_problem, name=f'KnowledgeGroup{i}',
-                                  profile=f'KnowledgeGroup{i}', proxy=self.proxy,
-                                  serpapi_api_key=self.serpapi_key, llm_api_key=self.llm_api_key)
-            knowledge_roles.append(role)
-        self.add_knowledge_roles(knowledge_roles)
-
-    def create_execution_roles(self):
-        """创建Execution Roles"""
-        self.add_execution_roles(
-            [ExecutionGroup(existing_knowledge=self.knowledge, execution_plans=self.execution_plans,
-                            roles=self.execution_roles_args,question_or_task=self.question_or_task)])
+        final_node = int(plans_args[-1]['number'])
+        for i in range(1, final_node + 1):
+            if 'task' not in dg.nodes[i]:
+                dg.remove_node(i)
+                continue
+            if 'name' not in dg.nodes[i]:
+                dg.nodes[i]['name'] = 'Executor_' + str(i)
+            if 'tools' not in dg.nodes[i]:
+                dg.nodes[i]['tools'] = '[None]'
+            if 'prompt' not in dg.nodes[i]:
+                dg.nodes[i]['prompt'] = 'You are a task executor. Your goal is to complete the following tasks as well as possible.'
+            if i != final_node:
+                if not any(True for _ in dg.successors(i)):
+                    dg.add_edge(i, final_node)
+        # nx.draw(dg, with_labels=True, font_weight='bold')
+        # plt.show()
+        self.graph = dg
+        self.previous_result = ['' for _ in range(len(self.graph.nodes())+1)]
+        # tasklogger.graph(nx.node_link_data(self.graph))
 
     async def publish_message(self, message: Message):
         """向当前环境发布信息"""
-        # self.message_queue.put(message)
         self.memory.add(message)
         self.history += f"\n{message}"
 
+        if 'Question/Task' in message.role:
+            self.question_or_task = message.content
+
         if 'Manager' in message.role:
-            self.question_or_task = self._parser_question_or_task(message.content)
-            self.sub_problems = self._parser_problems(message.content)
-            self.create_knowledge_roles(self.sub_problems)
-            self.execution_plans = self._parser_plans(message.content)
-            self.execution_roles_args = self._parser_execution_roles(message.content)
+            plans_args = self._parser_plans(message.content)
+            graph_args = self._parser_graph(message.content)
+            roles_args = self._parser_roles(message.content)
+            self.create_graph(plans_args=plans_args, roles_args=roles_args, graph_args=graph_args)
+            self.information = self._parser_information(message.content)
 
-        if 'KnowledgeGroup' in message.role:
-            # self.knowledge += '## Problem: '
-            # self.knowledge += re.findall('## Input Problem:\n([\s\S]*?)##', str(message.content))[0].strip()
-            # self.knowledge += '\nAnswer: '
-            self.knowledge += re.findall('## Final Answer:\n([\s\S]*?)##', str(message.content))[0].strip()
-            self.knowledge += '\n'
-
-        if 'ExecutionGroup' in message.role:
-            self.result = re.findall('## Answer:\n([\s\S]*?)##', str(message.content+"##"))[0].strip()
-
-    async def run(self, k=1):
+    async def run(self):
         """处理一次所有Role的运行"""
-        for _ in range(k):
-            futures = []
-            for key in self.roles.keys():
-                role = self.roles[key]
-                future = role.run()
-                futures.append(future)
+        # tasklogger.set_workspace(workspace=self.workspace)
 
-            await asyncio.gather(*futures)
+        self.add_role(Manager(proxy=self.proxy, llm_api_key=self.llm_api_key, serpapi_api_key=self.serpapi_key))
+        await self.roles['Manager'].run()
 
-        # if len(self.knowledge_roles) > 0:
-        #     futures = []
-        #     for key in self.knowledge_roles.keys():
-        #         role = self.knowledge_roles[key]
-        #         future = role.run()
-        #         futures.append(future)
-        #
-        #     await asyncio.gather(*futures)
-        for key in self.knowledge_roles.keys():
-            role = self.knowledge_roles[key]
-            await role.run()
+        predecessors = []
+        for i in range(len(self.graph.nodes())):
+            predecessors.append(list(self.graph.predecessors(i + 1)))
+        top_order = list(nx.topological_sort(self.graph))
 
-        self.create_execution_roles()
-        print('---------------Existing Knowledge---------------')
-        print(self.knowledge)
+        for i, task_number in enumerate(top_order):
 
-        for key in self.execution_roles.keys():
-            role = self.execution_roles[key]
-            await role.run()
+            if i == len(self.graph.nodes()) - 1:
+                is_final = True
+            else:
+                is_final = False
+
+            name = f'Group_Task_{task_number}'
+            group = CustomGroup(
+                role=self.graph.nodes[task_number]['prompt'],
+                task=self.graph.nodes[task_number]['task'],
+                question_or_task=self.question_or_task,
+                information=self.information,
+                is_final=is_final,
+                name=name
+            )
+            group.set_env(self)
+            previous = ''
+            predecessor = predecessors[task_number - 1]
+            if len(predecessor) != 0:
+                for pre in predecessor:
+                    previous += "## Task: " + self.graph.nodes[pre]['task']
+                    previous += '\n'
+                    previous += self.previous_result[pre]
+                    previous += '\n'
+            # tasklogger.execution(f"# Task {task_number}: {self.graph.nodes[task_number]['task']}\n")
+            response = await group.run(previous_results=previous)
+            self.previous_result[task_number] = response.instruct_content.Answer.strip().strip('-').strip()
+            # tasklogger.execution(f"## Answer\n{self.previous_result[task_number]}\n\n")
+            if i == len(self.graph.nodes()) - 1:
+                self.result = re.findall('## Answer:([\s\S]*?)##', response.content + "##")[0].strip().strip('-').strip()
+            time.sleep(SLEEP_RATE)
+        # tasklogger.history(self.history)
 
     def get_roles(self) -> dict[str, Role]:
         """获得环境内的所有Role"""

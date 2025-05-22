@@ -36,12 +36,15 @@ def retry(max_retries):
                     if i == max_retries - 1:
                         raise
                     await asyncio.sleep(2 ** i)
+
         return wrapper
+
     return decorator
 
 
 class RateLimiter:
     """Rate control class, each call goes through wait_if_needed, sleep if rate control is needed"""
+
     def __init__(self, rpm):
         self.last_call_time = 0
         self.interval = 1.1 * 60 / rpm  # Here 1.1 is used because even if the calls are made strictly according to time, they will still be QOS'd; consider switching to simple error retry later
@@ -71,6 +74,7 @@ class Costs(NamedTuple):
 
 class CostManager(metaclass=Singleton):
     """计算使用接口的开销"""
+
     def __init__(self):
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
@@ -90,9 +94,9 @@ class CostManager(metaclass=Singleton):
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         cost = (
-            prompt_tokens * TOKEN_COSTS[model]["prompt"]
-            + completion_tokens * TOKEN_COSTS[model]["completion"]
-        ) / 1000
+                       prompt_tokens * TOKEN_COSTS[model]["prompt"]
+                       + completion_tokens * TOKEN_COSTS[model]["completion"]
+               ) / 1000
         self.total_cost += cost
         logger.info(f"Total running cost: ${self.total_cost:.3f} | Max budget: ${CONFIG.max_budget:.3f} | "
                     f"Current cost: ${cost:.3f}, {prompt_tokens=}, {completion_tokens=}")
@@ -134,9 +138,11 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
     """
     Check https://platform.openai.com/examples for examples
     """
-    def __init__(self, proxy='', api_key=''):
+
+    def __init__(self, proxy='', api_key='', temperature=0.0):
         self.proxy = proxy
         self.api_key = api_key
+        self.temperature = temperature
         self.__init_openai(CONFIG)
         self.llm = openai
         self.stops = None
@@ -160,6 +166,9 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
             litellm.api_version = config.openai_api_version
         self.rpm = int(config.get("RPM", 10))
 
+    def set_temperature(self, temperature):
+        self.temperature = temperature
+
     async def _achat_completion_stream(self, messages: list[dict]) -> str:
         response = await litellm.acompletion(
             **self._cons_kwargs(messages),
@@ -178,7 +187,6 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
             collected_messages.append(chunk_message)  # save the message
             if "content" in chunk_message:
                 print(chunk_message["content"], end="")
-
         full_reply_content = ''.join([m.get('content', '') for m in collected_messages])
         usage = self._calc_usage(messages, full_reply_content)
         self._update_costs(usage)
@@ -192,7 +200,8 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
                 "max_tokens": CONFIG.max_tokens_rsp,
                 "n": 1,
                 "stop": self.stops,
-                "temperature": 0.2
+                "temperature": self.temperature,
+                "top_p": 1.0
             }
         else:
             kwargs = {
@@ -201,7 +210,8 @@ class OpenAIGPTAPI(BaseGPTAPI, RateLimiter):
                 "max_tokens": CONFIG.max_tokens_rsp,
                 "n": 1,
                 "stop": self.stops,
-                "temperature": 0.2
+                "temperature": self.temperature,
+                "top_p": 1.0
             }
         return kwargs
 
